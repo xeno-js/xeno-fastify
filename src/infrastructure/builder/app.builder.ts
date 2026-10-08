@@ -53,17 +53,19 @@ export class FastifyXenoBuilder<
       configuration: IConfigurationService,
     ) => void,
   ): Promise<this> {
-    await this.build()
-    const fastify = this._container.resolve(TOKENS.FASTIFY)
     if (this._isListening) return this
 
+    await this.build()
+
+    const fastify = this._container.resolve(TOKENS.FASTIFY)
     try {
       const opts: FastifyListenOptions = {
+        host: 'http://localhost',
         port: 3000,
       }
       if (Guards.isDefined(setupAction)) setupAction(fastify, opts, this._configuration)
       await fastify.listen(opts)
-      console.info(`Server listening on ${opts.port}`)
+      console.info(`Server listening on ${opts.host}:${opts.port}`)
       this._isListening = true
       return this
     } catch (err: unknown) {
