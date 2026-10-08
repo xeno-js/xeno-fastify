@@ -17,24 +17,12 @@ export default defineConfig({
   esbuildOptions(options) {
     options.alias = {
       ...options.alias,
-      '@xeno-js/core': resolve(import.meta.dirname, 'src'),
+      '@xeno-js/fastify': resolve(import.meta.dirname, 'src'),
     }
   },
   external: [
-    '@libsql/client',
-    '@libsql/client/web',
-    '@sentry/node',
-    '@supabase/ssr',
-    '@supabase/supabase-js',
     '@xeno-js/shared',
-    'axios',
-    'cockatiel',
-    'drizzle-orm',
-    'ioredis',
-    'p-limit',
-    'pg',
-    'pino',
-    'postgres',
-    'zod',
+    '@xeno-js/core',
+    'fastify'
   ],
 })
