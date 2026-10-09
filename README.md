@@ -193,7 +193,7 @@ await app.start((fastify, opts, _container, config) => {
 })
 ```
 
-The callback receives three arguments:
+The callback receives four arguments:
 
 | Argument    | Description                       |
 | ----------- | --------------------------------- |
@@ -265,15 +265,7 @@ The adapter's registry extends the Xeno.JS application registry with a typed
 Fastify dependency:
 
 ```ts
-import type { ApplicationRegistry } from '@xeno-js/core'
-import type { FastifyInstance } from 'fastify'
-
-export interface FastifyXenoRegistry<
-  TContext = unknown,
-  TTransaction = unknown,
-> extends ApplicationRegistry<TContext, TTransaction> {
-  readonly FASTIFY: FastifyInstance
-}
+import type { XenoRegistry } from '@xeno-js/fastify'
 ```
 
 This makes the Fastify instance available to infrastructure that needs it
@@ -410,7 +402,7 @@ start(
   setupAction: (
     fastifyInstance: FastifyInstance,
     opts: FastifyListenOptions,
-    container: IServiceContainer<TRegistry>
+    container: IServiceContainer<TRegistry>,
     configuration: IConfigurationService,
   ) => void
 ): Promise<this>
@@ -573,7 +565,7 @@ the builder instance.
 | [`@xeno-js/shared`](https://www.npmjs.com/package/@xeno-js/shared)         | Shared primitives and contracts                                                       |
 | [`@xeno-js/fastify`](https://www.npmjs.com/package/@xeno-js/fastify)       | Fastify HTTP transport integration                                                    |
 | [`@xeno-js/postgresql`](https://www.npmjs.com/package/@xeno-js/postgresql) | PostgreSQL integration                                                                |
-| [`@xeno-js/vue`](https://www.npmjs.com/package/@xeno-js/fe)                | Vue integration                                                                       |
+| [`@xeno-js/vue`](https://www.npmjs.com/package/@xeno-js/vue)               | Vue integration                                                                       |
 | [`@xeno-js/cli`](https://www.npmjs.com/package/@xeno-js/cli)               | Project scaffolding and code generation                                               |
 
 See the [Xeno.JS website](https://www.xeno-js.it/) for more information about

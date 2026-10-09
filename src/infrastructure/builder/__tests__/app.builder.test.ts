@@ -7,9 +7,11 @@ import { FastifyXenoBuilder } from '../app.builder'
 const { isDefined } = vi.hoisted(() => ({
   isDefined: vi.fn((value: unknown) => value !== undefined && value !== null),
 }))
-const { configureFastifyModule, adapter } = vi.hoisted(() => ({
+const { configureFastifyModule, adapter, build, resetContainer } = vi.hoisted(() => ({
   configureFastifyModule: vi.fn(),
   adapter: vi.fn(),
+  build: vi.fn(),
+  resetContainer: vi.fn(),
 }))
 
 vi.mock('@xeno-js/core', () => ({
@@ -22,6 +24,10 @@ vi.mock('@xeno-js/core', () => ({
       action: () => Promise<void>
     }[] = []
 
+    protected async _resetContainer(): Promise<void> {
+      await resetContainer()
+    }
+
     protected addAdapter(setupAction: (options: { fastify: boolean }) => void) {
       const options = { fastify: false }
       setupAction(options)
@@ -30,6 +36,7 @@ vi.mock('@xeno-js/core', () => ({
     }
 
     async build() {
+      await build()
       return this._container
     }
   },
@@ -61,6 +68,7 @@ class TestFastifyXenoBuilder extends FastifyXenoBuilder {
 describe('FastifyXenoBuilder', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    build.mockResolvedValue(undefined)
   })
 
   describe('addFastify', () => {
@@ -100,6 +108,7 @@ describe('FastifyXenoBuilder', () => {
   describe('start', () => {
     const createServer = () => ({
       listen: vi.fn().mockResolvedValue('http://localhost:3000'),
+      close: vi.fn().mockResolvedValue(undefined),
       log: { error: vi.fn() },
     })
 
@@ -134,19 +143,50 @@ describe('FastifyXenoBuilder', () => {
       expect(info).toHaveBeenCalledWith('Server listening on 127.0.0.1:3000')
     })
 
-    it('does not listen or rerun setup after the server has started', async () => {
+    it('shares an in-flight startup across concurrent calls', async () => {
+      const builder = new TestFastifyXenoBuilder()
+      const server = createServer()
+      let resolveListen!: (value: string) => void
+      server.listen.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveListen = resolve
+          }),
+      )
+      builder.replaceContainer({ resolve: vi.fn().mockReturnValue(server) })
+      const firstSetup = vi.fn()
+      const secondSetup = vi.fn()
+      vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+      const firstStart = builder.start(firstSetup)
+      const secondStart = builder.start(secondSetup)
+
+      await vi.waitFor(() => expect(server.listen).toHaveBeenCalledOnce())
+      expect(build).toHaveBeenCalledOnce()
+      expect(firstSetup).toHaveBeenCalledOnce()
+      expect(secondSetup).not.toHaveBeenCalled()
+
+      resolveListen('http://localhost:3000')
+      await expect(Promise.all([firstStart, secondStart])).resolves.toEqual([builder, builder])
+
+      expect(secondStart).toBe(firstStart)
+      expect(server.listen).toHaveBeenCalledOnce()
+    })
+
+    it('reuses the successful startup promise on subsequent calls', async () => {
       const builder = new TestFastifyXenoBuilder()
       const server = createServer()
       builder.replaceContainer({ resolve: vi.fn().mockReturnValue(server) })
-      const setupAction = vi.fn()
-      const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+      vi.spyOn(console, 'info').mockImplementation(() => undefined)
 
-      await builder.start(setupAction)
-      await builder.start(setupAction)
+      const firstStart = builder.start(vi.fn())
+      await expect(firstStart).resolves.toBe(builder)
+      const secondStart = builder.start(vi.fn())
+      await expect(secondStart).resolves.toBe(builder)
 
+      expect(secondStart).toBe(firstStart)
+      expect(build).toHaveBeenCalledOnce()
       expect(server.listen).toHaveBeenCalledOnce()
-      expect(setupAction).toHaveBeenCalledOnce()
-      expect(info).toHaveBeenCalledOnce()
     })
 
     it('skips setup when invoked without a setup action', async () => {
@@ -159,22 +199,62 @@ describe('FastifyXenoBuilder', () => {
       expect(server.listen).toHaveBeenCalledWith({ host: 'http://localhost', port: 3000 })
     })
 
-    it('logs startup failures and exits with status 1', async () => {
+    it('logs startup failures and propagates the original error', async () => {
       const builder = new TestFastifyXenoBuilder()
       const error = new Error('listen failed')
-      const exitError = new Error('process exit intercepted')
       const server = createServer()
       server.listen.mockRejectedValue(error)
-      builder.replaceContainer({ resolve: vi.fn().mockReturnValue(server) })
-      vi.spyOn(console, 'info').mockImplementation(() => undefined)
-      const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw exitError
+
+      builder.replaceContainer({
+        resolve: vi.fn().mockReturnValue(server),
       })
 
-      await expect(builder.start(() => undefined)).rejects.toBe(exitError)
+      const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+      await expect(builder.start(() => undefined)).rejects.toBe(error)
 
       expect(server.log.error).toHaveBeenCalledWith(error)
-      expect(exit).toHaveBeenCalledWith(1)
+      expect(server.listen).toHaveBeenCalledOnce()
+      expect(info).not.toHaveBeenCalled()
+    })
+
+    it('allows retrying startup when building fails', async () => {
+      const builder = new TestFastifyXenoBuilder()
+      const error = new Error('build failed')
+      const server = createServer()
+      build.mockRejectedValueOnce(error)
+      builder.replaceContainer({ resolve: vi.fn().mockReturnValue(server) })
+      vi.spyOn(console, 'info').mockImplementation(() => undefined)
+      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+      await expect(builder.start(() => undefined)).rejects.toBe(error)
+      await expect(builder.start(() => undefined)).resolves.toBe(builder)
+
+      expect(build).toHaveBeenCalledTimes(2)
+      expect(server.listen).toHaveBeenCalledOnce()
+    })
+
+    it('allows retrying startup after a failure', async () => {
+      const builder = new TestFastifyXenoBuilder()
+      const error = new Error('listen failed')
+      const server = createServer()
+
+      server.listen.mockRejectedValueOnce(error).mockResolvedValueOnce('http://localhost:3000')
+
+      builder.replaceContainer({
+        resolve: vi.fn().mockReturnValue(server),
+      })
+
+      vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+      await expect(builder.start(() => undefined)).rejects.toBe(error)
+      await expect(builder.start(() => undefined)).resolves.toBe(builder)
+
+      expect(build).toHaveBeenCalledTimes(2)
+      expect(server.listen).toHaveBeenCalledTimes(2)
+      expect(server.close).toHaveBeenCalledOnce()
+      expect(resetContainer).toHaveBeenCalledOnce()
+      expect(server.log.error).toHaveBeenCalledOnce()
     })
   })
 })

@@ -54,7 +54,7 @@ export class FastifyXenoBuilder<
    * @param setupAction - The action to configure Fastify.
    * @returns A promise that resolves when the application is listening for requests.
    */
-  public async start(
+  public start(
     setupAction: (
       fastifyInstance: FastifyInstance,
       opts: FastifyListenOptions,
@@ -64,8 +64,21 @@ export class FastifyXenoBuilder<
   ): Promise<this> {
     if (Guards.isDefined(this._isListening)) return this._isListening
 
-    this._isListening = this.executeStart(setupAction)
-    return this._isListening
+    const attempt = this.executeStart(setupAction)
+    this._isListening = attempt
+
+    void attempt.then(
+      () => {
+        /* noop */
+      },
+      () => {
+        if (this._isListening === attempt) {
+          this._isListening = null
+        }
+      },
+    )
+
+    return attempt
   }
 
   private async executeStart(
@@ -91,7 +104,14 @@ export class FastifyXenoBuilder<
       return this
     } catch (err: unknown) {
       fastify.log.error(err)
-      process.exit(1)
+      try {
+        await fastify.close()
+      } catch {
+        /* noop */
+      }
+      await this._resetContainer()
+      this._buildPromise = null
+      throw err
     }
   }
 }
