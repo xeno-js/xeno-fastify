@@ -1,4 +1,10 @@
-import type { IConfigurationService, Optional, SetupAction } from '@xeno-js/core'
+import type {
+  IConfigurationService,
+  IServiceContainer,
+  Nullable,
+  Optional,
+  SetupAction,
+} from '@xeno-js/core'
 import { AppBuilder, Guards } from '@xeno-js/core'
 import type { FastifyInstance, FastifyListenOptions, FastifyServerOptions } from 'fastify'
 
@@ -10,11 +16,11 @@ export class FastifyXenoBuilder<
   TRegistry extends FastifyXenoRegistry = FastifyXenoRegistry,
 > extends AppBuilder<TRegistry> {
   private _fastifyIsConfigured = false
-  private _isListening = false
+  private _isListening: Nullable<Promise<this>> = null
 
   /**
    * Add Fastify as the HTTP transport for the application.
-   * @param opts - The options to configure Fastify.
+   * @param  setupAction An optional setup action to configure Fastify.
    * @returns The builder instance.
    */
   public addFastify(
@@ -24,13 +30,15 @@ export class FastifyXenoBuilder<
 
     this.addAdapter((opt) => {
       opt.fastify = true
+      opt.native = false
+      opt.vercel = false
     })
 
     const opts: FastifyServerOptions = {}
     if (Guards.isDefined(setupAction)) setupAction(opts, this._configuration)
 
     this._modules.push({
-      priority: 50,
+      priority: 1,
       name: 'FastifyModule',
       action: async () => {
         const { FastifyModule } = await import('../modules/fastify.module')
@@ -43,18 +51,31 @@ export class FastifyXenoBuilder<
 
   /**
    * Start the application and listen for incoming requests.
-   * @param opts - The options to configure the server.
-   * @returns A promise that resolves to the Fastify instance.
+   * @param setupAction - The action to configure Fastify.
+   * @returns A promise that resolves when the application is listening for requests.
    */
   public async start(
     setupAction: (
       fastifyInstance: FastifyInstance,
       opts: FastifyListenOptions,
+      container: IServiceContainer<TRegistry>,
       configuration: IConfigurationService,
     ) => void,
   ): Promise<this> {
-    if (this._isListening) return this
+    if (Guards.isDefined(this._isListening)) return this._isListening
 
+    this._isListening = this.executeStart(setupAction)
+    return this._isListening
+  }
+
+  private async executeStart(
+    setupAction: (
+      fastifyInstance: FastifyInstance,
+      opts: FastifyListenOptions,
+      container: IServiceContainer<TRegistry>,
+      configuration: IConfigurationService,
+    ) => void,
+  ): Promise<this> {
     await this.build()
 
     const fastify = this._container.resolve(TOKENS.FASTIFY)
@@ -63,10 +84,10 @@ export class FastifyXenoBuilder<
         host: 'http://localhost',
         port: 3000,
       }
-      if (Guards.isDefined(setupAction)) setupAction(fastify, opts, this._configuration)
+      if (Guards.isDefined(setupAction))
+        setupAction(fastify, opts, this._container, this._configuration)
       await fastify.listen(opts)
       console.info(`Server listening on ${opts.host}:${opts.port}`)
-      this._isListening = true
       return this
     } catch (err: unknown) {
       fastify.log.error(err)

@@ -1,4 +1,4 @@
-﻿import type { IConfigurationService } from '@xeno-js/core'
+﻿import type { IConfigurationService, IServiceContainer } from '@xeno-js/core'
 import type { FastifyInstance, FastifyListenOptions, FastifyServerOptions } from 'fastify'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -74,11 +74,11 @@ describe('FastifyXenoBuilder', () => {
       expect(builder.addFastify(setupAction)).toBe(builder)
       expect(builder.addFastify(setupAction)).toBe(builder)
       expect(adapter).toHaveBeenCalledOnce()
-      expect(adapter).toHaveBeenCalledWith({ fastify: true })
+      expect(adapter).toHaveBeenCalledWith({ fastify: true, native: false, vercel: false })
       expect(setupAction).toHaveBeenCalledOnce()
       expect(setupAction).toHaveBeenCalledWith(expect.objectContaining({}), builder.configuration)
       expect(builder.modules).toHaveLength(1)
-      expect(builder.modules[0]).toMatchObject({ priority: 50, name: 'FastifyModule' })
+      expect(builder.modules[0]).toMatchObject({ priority: 1, name: 'FastifyModule' })
 
       await builder.modules[0]?.action()
       expect(configureFastifyModule).toHaveBeenCalledOnce()
@@ -108,10 +108,12 @@ describe('FastifyXenoBuilder', () => {
       const server = createServer()
       const resolve = vi.fn().mockReturnValue(server)
       builder.replaceContainer({ resolve })
+      const fakeContainer = { resolve }
       const setupAction = vi.fn(
         (
           _instance: FastifyInstance,
           options: FastifyListenOptions,
+          _container: IServiceContainer,
           _configuration: IConfigurationService,
         ) => {
           options.host = '127.0.0.1'
@@ -125,6 +127,7 @@ describe('FastifyXenoBuilder', () => {
       expect(setupAction).toHaveBeenCalledWith(
         server,
         { port: 3000, host: '127.0.0.1' },
+        fakeContainer,
         builder.configuration,
       )
       expect(server.listen).toHaveBeenCalledWith({ port: 3000, host: '127.0.0.1' })
