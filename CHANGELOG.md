@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/xeno-js/xeno-fastify/compare/v1.0.2...v1.0.3) (2026-10-09)
+
+### Bug Fixes
+
+- **builder:** reset container after start failed
+  ([6fdac09](https://github.com/xeno-js/xeno-fastify/commit/6fdac0902579aa3c1183690aa9d97331a2102a55))
+
 ## [1.0.2](https://github.com/xeno-js/xeno-fastify/compare/v1.0.1...v1.0.2) (2026-10-09)
 
 ## [1.0.1](https://github.com/xeno-js/xeno-fastify/compare/v1.0.0...v1.0.1) (2026-10-09)
