@@ -1,6 +1,6 @@
 {
   "name": "@xeno-js/fastify",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Fastify adapter for Xeno.js — use Fastify as the HTTP transport for scalable, framework-agnostic TypeScript applications.",
   "repository": {
     "type": "git",
